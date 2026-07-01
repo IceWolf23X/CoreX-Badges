@@ -15,14 +15,10 @@ const PROJECTS = [
         label: "Paper/Purpur",
         pluginId: 32163,
         bstatsUrl: "https://bstats.org/plugin/bukkit/CoreChatX-paper",
-
-        // Used as a safety floor when the bStats chart API does not return
-        // the full historical peak shown on the public bStats page.
         minimumRecords: {
           servers: 5,
           players: 69
         },
-
         colors: {
           servers: "#22c55e",
           players: "#3b82f6",
@@ -35,13 +31,10 @@ const PROJECTS = [
         label: "Velocity",
         pluginId: 32164,
         bstatsUrl: "https://bstats.org/plugin/velocity/CoreChatX-velocity",
-
-        // If Velocity has a different real player record, change this value.
         minimumRecords: {
           servers: 1,
           players: 69
         },
-
         colors: {
           servers: "#8b5cf6",
           players: "#06b6d4",
@@ -72,7 +65,6 @@ function toFiniteNumber(value) {
   }
 
   const number = Number(value);
-
   return Number.isFinite(number) ? number : null;
 }
 
@@ -171,10 +163,27 @@ function createBadgeSvg(label, value, color) {
   const normalizedLabel = label.toUpperCase();
   const normalizedValue = formatNumber(value);
 
-  const labelWidth = Math.ceil(normalizedLabel.length * 7.2 + 24);
-  const valueWidth = Math.ceil(normalizedValue.length * 7.2 + 24);
-  const width = labelWidth + valueWidth;
+  const fontSize = 11;
+  const letterSpacing = 1;
+  const horizontalPadding = 16;
+  const valueHorizontalPadding = 14;
   const height = 28;
+
+  // Deliberately generous estimate to avoid clipping with uppercase bold text.
+  const approxCharWidth = fontSize * 0.78;
+
+  const labelWidth = Math.ceil(
+    normalizedLabel.length * approxCharWidth +
+      Math.max(0, normalizedLabel.length - 1) * letterSpacing +
+      horizontalPadding * 2
+  );
+
+  const valueWidth = Math.ceil(
+    normalizedValue.length * approxCharWidth +
+      valueHorizontalPadding * 2
+  );
+
+  const width = labelWidth + valueWidth;
 
   const labelCenter = labelWidth / 2;
   const valueCenter = labelWidth + valueWidth / 2;
@@ -192,22 +201,24 @@ function createBadgeSvg(label, value, color) {
 
   <text
     x="${labelCenter}"
-    y="18"
+    y="50%"
     text-anchor="middle"
+    dominant-baseline="middle"
     fill="#ffffff"
     font-family="Verdana, Geneva, DejaVu Sans, sans-serif"
-    font-size="11"
+    font-size="${fontSize}"
     font-weight="700"
-    letter-spacing="1"
+    letter-spacing="${letterSpacing}"
   >${safeLabel}</text>
 
   <text
     x="${valueCenter}"
-    y="18"
+    y="50%"
     text-anchor="middle"
+    dominant-baseline="middle"
     fill="#ffffff"
     font-family="Verdana, Geneva, DejaVu Sans, sans-serif"
-    font-size="11"
+    font-size="${fontSize}"
     font-weight="700"
   >${safeValue}</text>
 </svg>
@@ -219,7 +230,6 @@ async function writeBadge(outputDir, fileName, label, value, color) {
   const filePath = path.join(outputDir, fileName);
 
   await writeFile(filePath, svg, "utf8");
-
   console.log(`Generated ${filePath}: ${label} = ${value}`);
 }
 
