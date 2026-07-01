@@ -359,15 +359,17 @@ function createChartSvg({
   serverPoints,
   playerPoints,
   currentServers,
-  currentPlayers
+  currentPlayers,
+  recordServers,
+  recordPlayers
 }) {
   const width = 980;
-  const height = 360;
+  const height = 390;
 
   const padding = {
     top: 58,
     right: 34,
-    bottom: 76,
+    bottom: 104,
     left: 58
   };
 
@@ -449,6 +451,8 @@ function createChartSvg({
   const safeTitle = escapeXml(title);
   const safeServers = escapeXml(formatNumber(currentServers));
   const safePlayers = escapeXml(formatNumber(currentPlayers));
+  const safeRecordServers = escapeXml(formatNumber(recordServers));
+  const safeRecordPlayers = escapeXml(formatNumber(recordPlayers));
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${safeTitle} bStats chart">
@@ -500,7 +504,7 @@ function createChartSvg({
 
   <rect x="${chartLeft}" y="${chartTop}" width="${chartWidth}" height="${chartHeight}" fill="none" stroke="#4b5563" stroke-width="1"/>
 
-  <g transform="translate(${width / 2 - 128}, ${height - 30})">
+  <g transform="translate(${width / 2 - 205}, ${height - 50})">
     <circle cx="0" cy="0" r="8" fill="#38bdf8" stroke="#7dd3fc" stroke-width="2"/>
     <text
       x="16"
@@ -508,16 +512,47 @@ function createChartSvg({
       fill="#f4f4f5"
       font-family="Verdana, Geneva, DejaVu Sans, sans-serif"
       font-size="13"
+      font-weight="700"
     >${safeServers} Servers</text>
 
-    <circle cx="130" cy="0" r="8" fill="#fb7185" stroke="#fecdd3" stroke-width="2"/>
+    <circle cx="150" cy="0" r="8" fill="#fb7185" stroke="#fecdd3" stroke-width="2"/>
     <text
-      x="146"
+      x="166"
       y="4"
       fill="#f4f4f5"
       font-family="Verdana, Geneva, DejaVu Sans, sans-serif"
       font-size="13"
+      font-weight="700"
     >${safePlayers} Players</text>
+
+    <text
+      x="0"
+      y="30"
+      fill="#a1a1aa"
+      font-family="Verdana, Geneva, DejaVu Sans, sans-serif"
+      font-size="12"
+      font-weight="700"
+    >Record:</text>
+
+    <circle cx="76" cy="26" r="6" fill="#38bdf8" stroke="#7dd3fc" stroke-width="1.5"/>
+    <text
+      x="90"
+      y="30"
+      fill="#f4f4f5"
+      font-family="Verdana, Geneva, DejaVu Sans, sans-serif"
+      font-size="12"
+      font-weight="700"
+    >${safeRecordServers} Servers</text>
+
+    <circle cx="224" cy="26" r="6" fill="#fb7185" stroke="#fecdd3" stroke-width="1.5"/>
+    <text
+      x="238"
+      y="30"
+      fill="#f4f4f5"
+      font-family="Verdana, Geneva, DejaVu Sans, sans-serif"
+      font-size="12"
+      font-weight="700"
+    >${safeRecordPlayers} Players</text>
   </g>
 </svg>
 `;
@@ -682,7 +717,9 @@ async function generateProject(project) {
         serverPoints: chartServerPoints,
         playerPoints: chartPlayerPoints,
         currentServers,
-        currentPlayers
+        currentPlayers,
+        recordServers,
+        recordPlayers
       }
     );
   }
