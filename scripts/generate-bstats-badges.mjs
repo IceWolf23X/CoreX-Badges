@@ -15,6 +15,14 @@ const PROJECTS = [
         label: "Paper/Purpur",
         pluginId: 32163,
         bstatsUrl: "https://bstats.org/plugin/bukkit/CoreChatX-paper",
+
+        // Used as a safety floor when the bStats chart API does not return
+        // the full historical peak shown on the public bStats page.
+        minimumRecords: {
+          servers: 5,
+          players: 69
+        },
+
         colors: {
           servers: "#22c55e",
           players: "#3b82f6",
@@ -27,6 +35,13 @@ const PROJECTS = [
         label: "Velocity",
         pluginId: 32164,
         bstatsUrl: "https://bstats.org/plugin/velocity/CoreChatX-velocity",
+
+        // If Velocity has a different real player record, change this value.
+        minimumRecords: {
+          servers: 1,
+          players: 69
+        },
+
         colors: {
           servers: "#8b5cf6",
           players: "#06b6d4",
@@ -49,6 +64,16 @@ function escapeXml(value) {
 
 function formatNumber(value) {
   return new Intl.NumberFormat("en-US").format(value);
+}
+
+function toFiniteNumber(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : null;
 }
 
 async function fetchJson(url) {
@@ -81,9 +106,9 @@ async function getChartValues(pluginId, wantedChartName) {
   const charts = await fetchJson(`${BSTATS_API}/plugins/${pluginId}/charts`);
   const chartEntries = normalizeChartEntries(charts);
 
-  const match = chartEntries.find(([chartId, chart]) => {
-    const normalizedWanted = wantedChartName.toLowerCase();
+  const normalizedWanted = wantedChartName.toLowerCase();
 
+  const match = chartEntries.find(([chartId, chart]) => {
     const candidates = [
       chartId,
       chart.title,
@@ -99,7 +124,10 @@ async function getChartValues(pluginId, wantedChartName) {
 
   if (!match) {
     const availableCharts = chartEntries
-      .map(([chartId, chart]) => `${chartId}${chart.title ? ` (${chart.title})` : ""}`)
+      .map(([chartId, chart]) => {
+        const title = chart?.title ? ` (${chart.title})` : "";
+        return `${chartId}${title}`;
+      })
       .join(", ");
 
     throw new Error(
@@ -110,16 +138,33 @@ async function getChartValues(pluginId, wantedChartName) {
   const [chartId] = match;
 
   const rawData = await fetchJson(
-    `${BSTATS_API}/plugins/${pluginId}/charts/${chartId}/data`
+    `${BSTATS_API}/plugins/${pluginId}/charts/${chartId}/data?maxElements=100000`
   );
 
-  return rawData
-    .map((point) => ({
-      timestamp: Number(point[0]),
-      value: Number(point[1])
-    }))
-    .filter((point) => Number.isFinite(point.timestamp) && Number.isFinite(point.value))
+  const points = rawData
+    .map((point) => {
+      const timestamp = toFiniteNumber(point[0]);
+      const value = toFiniteNumber(point[1]);
+
+      if (timestamp === null || value === null) {
+        return null;
+      }
+
+      return {
+        timestamp,
+        value
+      };
+    })
+    .filter(Boolean)
     .sort((a, b) => a.timestamp - b.timestamp);
+
+  if (points.length === 0) {
+    throw new Error(
+      `No valid data points found for chart "${chartId}" of plugin ${pluginId}`
+    );
+  }
+
+  return points;
 }
 
 function createBadgeSvg(label, value, color) {
@@ -191,16 +236,52 @@ async function generateProject(project) {
   };
 
   for (const platform of project.platforms) {
+    console.log("");
     console.log(`Fetching bStats data for ${project.displayName} / ${platform.label}...`);
 
     const serverPoints = await getChartValues(platform.pluginId, "Servers");
     const playerPoints = await getChartValues(platform.pluginId, "Players");
 
-    const currentServers = serverPoints.at(-1)?.value ?? 0;
-    const currentPlayers = playerPoints.at(-1)?.value ?? 0;
+    const currentServers = serverPoints.at(-1).value;
+    const currentPlayers = playerPoints.at(-1).value;
 
-    const recordServers = Math.max(0, ...serverPoints.map((point) => point.value));
-    const recordPlayers = Math.max(0, ...playerPoints.map((point) => point.value));
+    const apiRecordServers = Math.max(
+      0,
+      ...serverPoints.map((point) => point.value)
+    );
+
+    const apiRecordPlayers = Math.max(
+      0,
+      ...playerPoints.map((point) => point.value)
+    );
+
+    const minimumRecordServers = platform.minimumRecords?.servers ?? null;
+    const minimumRecordPlayers = platform.minimumRecords?.players ?? null;
+
+    const recordServers = Math.max(
+      apiRecordServers,
+      minimumRecordServers ?? 0
+    );
+
+    const recordPlayers = Math.max(
+      apiRecordPlayers,
+      minimumRecordPlayers ?? 0
+    );
+
+    const latestServerPoint = new Date(serverPoints.at(-1).timestamp).toISOString();
+    const latestPlayerPoint = new Date(playerPoints.at(-1).timestamp).toISOString();
+
+    console.log(`${project.displayName} / ${platform.label}`);
+    console.log(`Current servers: ${currentServers}`);
+    console.log(`Current players: ${currentPlayers}`);
+    console.log(`API record servers: ${apiRecordServers}`);
+    console.log(`API record players: ${apiRecordPlayers}`);
+    console.log(`Minimum record servers: ${minimumRecordServers}`);
+    console.log(`Minimum record players: ${minimumRecordPlayers}`);
+    console.log(`Final record servers: ${recordServers}`);
+    console.log(`Final record players: ${recordPlayers}`);
+    console.log(`Latest server point: ${latestServerPoint}`);
+    console.log(`Latest player point: ${latestPlayerPoint}`);
 
     summary.platforms[platform.key] = {
       label: platform.label,
@@ -208,11 +289,17 @@ async function generateProject(project) {
       bstatsUrl: platform.bstatsUrl,
       servers: {
         current: currentServers,
-        record: recordServers
+        apiRecord: apiRecordServers,
+        minimumRecord: minimumRecordServers,
+        record: recordServers,
+        latestPoint: latestServerPoint
       },
       players: {
         current: currentPlayers,
-        record: recordPlayers
+        apiRecord: apiRecordPlayers,
+        minimumRecord: minimumRecordPlayers,
+        record: recordPlayers,
+        latestPoint: latestPlayerPoint
       }
     };
 
@@ -255,6 +342,7 @@ async function generateProject(project) {
     "utf8"
   );
 
+  console.log("");
   console.log(`Generated summary for ${project.displayName}.`);
 }
 
@@ -265,6 +353,7 @@ async function main() {
     await generateProject(project);
   }
 
+  console.log("");
   console.log("All bStats badges generated successfully.");
 }
 
