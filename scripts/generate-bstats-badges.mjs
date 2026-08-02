@@ -7,6 +7,13 @@ const BSTATS_API = "https://bstats.org/api/v1";
 
 const CHART_DAYS = 7;
 
+const PAPER_COLORS = Object.freeze({
+  servers: "#22c55e",
+  players: "#3b82f6",
+  recordServers: "#f97316",
+  recordPlayers: "#ec4899"
+});
+
 const PROJECTS = [
   {
     slug: "corechatx",
@@ -21,12 +28,7 @@ const PROJECTS = [
           servers: 5,
           players: 69
         },
-        colors: {
-          servers: "#22c55e",
-          players: "#3b82f6",
-          recordServers: "#f97316",
-          recordPlayers: "#ec4899"
-        }
+        colors: PAPER_COLORS
       },
       {
         key: "velocity",
@@ -45,6 +47,71 @@ const PROJECTS = [
         }
       }
     ]
+  },
+  {
+    slug: "corearmorx",
+    displayName: "CoreArmorX",
+    platforms: [
+      {
+        key: "paper",
+        label: "Paper/Purpur",
+        pluginId: 33070,
+        bstatsUrl: "https://bstats.org/plugin/bukkit/CoreArmorX",
+        colors: PAPER_COLORS
+      }
+    ]
+  },
+  {
+    slug: "coretoolsx",
+    displayName: "CoreToolsX",
+    platforms: [
+      {
+        key: "paper",
+        label: "Paper/Purpur",
+        pluginId: 33071,
+        bstatsUrl: "https://bstats.org/plugin/bukkit/CoreToolsX",
+        colors: PAPER_COLORS
+      }
+    ]
+  },
+  {
+    slug: "coreextractionx",
+    displayName: "CoreExtractionX",
+    platforms: [
+      {
+        key: "paper",
+        label: "Paper/Purpur",
+        pluginId: 33072,
+        bstatsUrl: "https://bstats.org/plugin/bukkit/CoreExtractionX",
+        colors: PAPER_COLORS
+      }
+    ]
+  },
+  {
+    slug: "corecasex",
+    displayName: "CoreCaseX",
+    platforms: [
+      {
+        key: "paper",
+        label: "Paper/Purpur",
+        pluginId: 33073,
+        bstatsUrl: "https://bstats.org/plugin/bukkit/CoreCaseX",
+        colors: PAPER_COLORS
+      }
+    ]
+  },
+  {
+    slug: "corestructuresx",
+    displayName: "CoreStructuresX",
+    platforms: [
+      {
+        key: "paper",
+        label: "Paper/Purpur",
+        pluginId: 33074,
+        bstatsUrl: "https://bstats.org/plugin/bukkit/CoreStructuresX",
+        colors: PAPER_COLORS
+      }
+    ]
   }
 ];
 
@@ -55,6 +122,134 @@ function escapeXml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+/** Builds the static Pages catalogue from the same project definitions used for generation. */
+function createIndexHtml(projects) {
+  const projectSections = projects
+    .map((project) => {
+      const platformSections = project.platforms
+        .map((platform) => {
+          const basePath = `./${project.slug}/${platform.key}`;
+          const safeProjectName = escapeXml(project.displayName);
+          const safePlatformLabel = escapeXml(platform.label);
+          const safeBstatsUrl = escapeXml(platform.bstatsUrl);
+
+          return `
+          <article class="platform">
+            <div class="platform-heading">
+              <h3>${safePlatformLabel}</h3>
+              <a href="${safeBstatsUrl}">Open on bStats</a>
+            </div>
+            <div class="badges">
+              <img src="${basePath}-servers.svg" alt="${safeProjectName} ${safePlatformLabel} Servers">
+              <img src="${basePath}-players.svg" alt="${safeProjectName} ${safePlatformLabel} Players">
+              <img src="${basePath}-record-servers.svg" alt="${safeProjectName} ${safePlatformLabel} Record Servers">
+              <img src="${basePath}-record-players.svg" alt="${safeProjectName} ${safePlatformLabel} Record Players">
+            </div>
+            <img class="chart" src="${basePath}-chart.svg" alt="${safeProjectName} ${safePlatformLabel} seven-day bStats chart">
+          </article>`;
+        })
+        .join("");
+
+      return `
+      <section class="project">
+        <h2>${escapeXml(project.displayName)}</h2>
+        ${platformSections}
+      </section>`;
+    })
+    .join("");
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Static SVG badges and seven-day bStats charts for the CoreX plugin family.">
+  <title>CoreX bStats Badges</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #0f1117;
+      color: #f4f4f5;
+    }
+
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 40px 0 64px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin-top: 0;
+    }
+
+    .project {
+      margin-top: 32px;
+      padding: 24px;
+      border: 1px solid #343946;
+      border-radius: 12px;
+      background: #18181b;
+    }
+
+    .platform + .platform {
+      margin-top: 28px;
+      padding-top: 28px;
+      border-top: 1px solid #343946;
+    }
+
+    .platform-heading {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    a {
+      color: #7dd3fc;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 16px 0;
+    }
+
+    .badges img {
+      height: 28px;
+      max-width: 100%;
+    }
+
+    .chart {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>CoreX bStats Badges</h1>
+    <p>Static SVG badges and seven-day usage charts generated from the public bStats API.</p>
+    ${projectSections}
+  </main>
+</body>
+</html>
+`;
 }
 
 function formatNumber(value) {
@@ -566,6 +761,7 @@ async function writeChart(outputDir, fileName, chartOptions) {
   console.log(`Generated ${filePath}`);
 }
 
+/** Fetches one project's platform metrics and writes its badges, charts, and JSON summary. */
 async function generateProject(project) {
   const projectOutputDir = path.join(OUTPUT_ROOT, project.slug);
 
@@ -648,6 +844,7 @@ async function generateProject(project) {
 
     summary.platforms[platform.key] = {
       label: platform.label,
+      pluginId: platform.pluginId,
       bstatsUrl: platform.bstatsUrl,
       files: {
         serversBadge: `${platform.key}-servers.svg`,
@@ -734,6 +931,7 @@ async function generateProject(project) {
   console.log(`Generated summary for ${project.displayName}.`);
 }
 
+/** Generates every configured project artifact and the public Pages catalogue. */
 async function main() {
   await mkdir(OUTPUT_ROOT, { recursive: true });
 
@@ -741,7 +939,14 @@ async function main() {
     await generateProject(project);
   }
 
+  await writeFile(
+    path.join(OUTPUT_ROOT, "index.html"),
+    createIndexHtml(PROJECTS),
+    "utf8"
+  );
+
   console.log("");
+  console.log(`Generated ${path.join(OUTPUT_ROOT, "index.html")}.`);
   console.log("All bStats badges and charts generated successfully.");
 }
 
