@@ -36,3 +36,5 @@ node scripts/generate-bstats-badges.mjs
 The scheduled GitHub Actions workflow regenerates and deploys the complete catalogue every six hours.
 
 Published site: <https://icewolf23x.github.io/CoreX-Badges/>
+
+<!-- Scheduled workflow activity refresh: 2026-09-24 -->
