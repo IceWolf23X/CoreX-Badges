@@ -282,18 +282,50 @@ function normalizeTimestamp(value) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "CoreX-bStats-badge-generator"
-    }
-  });
+  const maxAttempts = 5;
+  const baseDelayMs = 2_000;
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} while fetching ${url}`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let response;
+
+    try {
+      response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "CoreX-bStats-badge-generator"
+        }
+      });
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+
+      const delayMs = baseDelayMs * 2 ** (attempt - 1);
+      console.warn(
+        `Network error while fetching ${url}: ${error.message}. Retrying in ${delayMs / 1000}s (${attempt}/${maxAttempts})...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+
+    if (response.ok) {
+      return response.json();
+    }
+
+    const retryable = response.status === 429 || response.status >= 500;
+
+    if (!retryable || attempt === maxAttempts) {
+      throw new Error(`HTTP ${response.status} while fetching ${url}`);
+    }
+
+    const delayMs = baseDelayMs * 2 ** (attempt - 1);
+    console.warn(
+      `HTTP ${response.status} while fetching ${url}. Retrying in ${delayMs / 1000}s (${attempt}/${maxAttempts})...`
+    );
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
-  return response.json();
+  throw new Error(`Failed to fetch ${url} after ${maxAttempts} attempts`);
 }
 
 function normalizeChartEntries(charts) {
