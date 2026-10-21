@@ -1,11 +1,17 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const OUTPUT_ROOT = process.env.BADGE_OUTPUT_DIR || ".";
 
 const BSTATS_API = "https://bstats.org/api/v1";
 
 const CHART_DAYS = 7;
+
+const INTEGRATION_BADGES = Object.freeze({
+  discord: { key: "discord", chartId: "discord_integration", label: "Discord", color: "#5865f2" },
+  telegram: { key: "telegram", chartId: "telegram_integration", label: "Telegram", color: "#229ed9" }
+});
 
 const PAPER_COLORS = Object.freeze({
   servers: "#22c55e",
@@ -24,6 +30,7 @@ const PROJECTS = [
         label: "Paper/Purpur",
         pluginId: 32163,
         bstatsUrl: "https://bstats.org/plugin/bukkit/CoreChatX-paper",
+        integrations: [INTEGRATION_BADGES.discord, INTEGRATION_BADGES.telegram],
         minimumRecords: {
           servers: 5,
           players: 69
@@ -35,6 +42,7 @@ const PROJECTS = [
         label: "Velocity",
         pluginId: 32164,
         bstatsUrl: "https://bstats.org/plugin/velocity/CoreChatX-velocity",
+        integrations: [INTEGRATION_BADGES.discord],
         minimumRecords: {
           servers: 1,
           players: 69
@@ -124,7 +132,7 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
-/** Builds the static Pages catalogue from the same project definitions used for generation. */
+/** Builds the static Pages catalogue, including configured integration badges, from project definitions. */
 function createIndexHtml(projects) {
   const projectSections = projects
     .map((project) => {
@@ -134,6 +142,10 @@ function createIndexHtml(projects) {
           const safeProjectName = escapeXml(project.displayName);
           const safePlatformLabel = escapeXml(platform.label);
           const safeBstatsUrl = escapeXml(platform.bstatsUrl);
+          // Link only integration artifacts configured for this specific platform.
+          const integrationImages = (platform.integrations ?? []).map((integration) =>
+            `<img src="${basePath}-${escapeXml(integration.key)}.svg" alt="${safeProjectName} ${safePlatformLabel} ${escapeXml(integration.label)} Servers" title="Servers with ${escapeXml(integration.label)} enabled; N/A means data is unavailable">`
+          ).join("\n              ");
 
           return `
           <article class="platform">
@@ -146,6 +158,7 @@ function createIndexHtml(projects) {
               <img src="${basePath}-players.svg" alt="${safeProjectName} ${safePlatformLabel} Players">
               <img src="${basePath}-record-servers.svg" alt="${safeProjectName} ${safePlatformLabel} Record Servers">
               <img src="${basePath}-record-players.svg" alt="${safeProjectName} ${safePlatformLabel} Record Players">
+              ${integrationImages}
             </div>
             <img class="chart" src="${basePath}-chart.svg" alt="${safeProjectName} ${safePlatformLabel} seven-day bStats chart">
           </article>`;
@@ -404,9 +417,10 @@ async function getChartValues(pluginId, wantedChartName) {
   return points;
 }
 
+/** Renders numeric metrics or an explicit N/A value using the existing badge layout. */
 function createBadgeSvg(label, value, color) {
   const normalizedLabel = label.toUpperCase();
-  const normalizedValue = formatNumber(value);
+  const normalizedValue = value === null ? "N/A" : formatNumber(value);
 
   const fontSize = 11;
   const letterSpacing = 1;
@@ -470,12 +484,49 @@ function createBadgeSvg(label, value, color) {
 `;
 }
 
+/** Writes one numeric or unavailable badge and records its displayed value in the generation log. */
 async function writeBadge(outputDir, fileName, label, value, color) {
   const svg = createBadgeSvg(label, value, color);
   const filePath = path.join(outputDir, fileName);
 
   await writeFile(filePath, svg, "utf8");
-  console.log(`Generated ${filePath}: ${label} = ${value}`);
+  console.log(`Generated ${filePath}: ${label} = ${value ?? "N/A"}`);
+}
+
+/** Extracts configured adopters from bStats simple-pie counts without confusing missing data with zero. */
+function parseIntegrationUsage(rawData) {
+  if (!Array.isArray(rawData)) {
+    throw new Error("Expected a bStats simple-pie array");
+  }
+  const categories = new Set(["Enabled", "Disabled", "Managed by Velocity"]);
+  let enabledServers = 0;
+  let reportedServers = 0;
+  for (const entry of rawData) {
+    if (!entry || !categories.has(entry.name) || !Number.isSafeInteger(entry.y) || entry.y < 0) {
+      throw new Error("Invalid integration category or server count in bStats response");
+    }
+    reportedServers += entry.y;
+    if (!Number.isSafeInteger(reportedServers)) {
+      throw new Error("Integration server count exceeds the supported integer range");
+    }
+    if (entry.name === "Enabled") {
+      enabledServers += entry.y;
+    }
+  }
+  return reportedServers === 0
+    ? { status: "no-data", enabledServers: null, reportedServers: 0 }
+    : { status: "available", enabledServers, reportedServers };
+}
+
+/** Degrades optional custom-chart failures to unavailable while mandatory usage metrics remain strict. */
+async function getIntegrationUsage(pluginId, chartId) {
+  try {
+    const rawData = await fetchJson(`${BSTATS_API}/plugins/${pluginId}/charts/${chartId}/data`);
+    return parseIntegrationUsage(rawData);
+  } catch (error) {
+    console.warn(`Integration chart ${pluginId}/${chartId} unavailable: ${error.message}`);
+    return { status: "unavailable", enabledServers: null, reportedServers: null, error: error.message };
+  }
 }
 
 function filterRecentPoints(points, latestTimestamp, days) {
@@ -793,9 +844,9 @@ async function writeChart(outputDir, fileName, chartOptions) {
   console.log(`Generated ${filePath}`);
 }
 
-/** Fetches one project's platform metrics and writes its badges, charts, and JSON summary. */
-async function generateProject(project) {
-  const projectOutputDir = path.join(OUTPUT_ROOT, project.slug);
+/** Writes one project's usage and optional integration artifacts into the selected output root. */
+async function generateProject(project, outputRoot = OUTPUT_ROOT) {
+  const projectOutputDir = path.join(outputRoot, project.slug);
 
   await mkdir(projectOutputDir, { recursive: true });
 
@@ -906,6 +957,24 @@ async function generateProject(project) {
       }
     };
 
+    if (platform.integrations?.length) {
+      const platformSummary = summary.platforms[platform.key];
+      platformSummary.integrations = {};
+      for (const integration of platform.integrations) {
+        const usage = await getIntegrationUsage(platform.pluginId, integration.chartId);
+        const fileName = `${platform.key}-${integration.key}.svg`;
+        platformSummary.files[`${integration.key}Badge`] = fileName;
+        platformSummary.integrations[integration.key] = { chartId: integration.chartId, ...usage };
+        await writeBadge(
+          projectOutputDir,
+          fileName,
+          `${platform.label} ${integration.label} Servers`,
+          usage.enabledServers,
+          usage.enabledServers === null ? "#6b7280" : integration.color
+        );
+      }
+    }
+
     await writeBadge(
       projectOutputDir,
       `${platform.key}-servers.svg`,
@@ -982,7 +1051,12 @@ async function main() {
   console.log("All bStats badges and charts generated successfully.");
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+export { PROJECTS, createBadgeSvg, createIndexHtml, generateProject, getIntegrationUsage, parseIntegrationUsage };
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  // Keep CLI failures visible while allowing isolated imports for offline regression tests.
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

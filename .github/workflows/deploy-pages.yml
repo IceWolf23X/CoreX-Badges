@@ -36,6 +36,9 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Test badge generator
+        run: node --test scripts/generate-bstats-badges.test.mjs
+
       - name: Generate bStats badges
         run: |
           mkdir -p _site
